@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Thermal Studio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo"></span>Thermal Studio</div>
+  <div class="pill" id="camPill"><span class="dot"></span><span id="camName">connecting…</span></div>
+  <div class="stat"><label>FPS</label><span id="fps">–</span></div>
+  <div class="stat"><label>FPA</label><span id="fpa">–</span></div>
+  <div class="stat"><label>FFC</label><span id="ffcStat">–</span></div>
+  <div class="spacer"></div>
+  <div class="rec" id="recBadge" hidden>● REC</div>
+  <div class="rec log" id="logBadge" hidden>● LOG</div>
+  <button id="btnFFC" title="Flat-field correction (shutter)">Run FFC</button>
+  <button id="btnSnap" class="primary" title="Save radiometric data + PNG">Snapshot</button>
+</header>
+
+<div id="banner" hidden></div>
+
+<main>
+  <section class="viewer">
+    <div class="imgwrap">
+      <div class="imgbox" id="imgbox">
+        <canvas id="view"></canvas>
+        <div class="readout" id="readout"></div>
+        <div class="srview" id="srview" hidden>
+          <div class="srbar">
+            <div class="seg" id="srWhich">
+              <button data-v="image" class="on">Result</button>
+              <button data-v="baseline">Single frame</button>
+            </div>
+            <span id="srInfo"></span>
+            <div class="spacer"></div>
+            <button id="srDownload">Download PNG</button>
+            <button id="srClose">Close</button>
+          </div>
+          <canvas id="srcanvas"></canvas>
+          <div class="readout" id="srReadout"></div>
+        </div>
+      </div>
+      <div class="cbar">
+        <span id="cbMax">–</span>
+        <canvas id="colorbar" width="16" height="256"></canvas>
+        <span id="cbMin">–</span>
+      </div>
+    </div>
+    <div class="spots">
+      <div><label>Max</label><span id="sMax">–</span></div>
+      <div><label>Min</label><span id="sMin">–</span></div>
+      <div><label>Mean</label><span id="sMean">–</span></div>
+      <div><label>Center</label><span id="sCenter">–</span></div>
+      <div class="hint">Click image to add a measurement point · drag to move · right-click to delete</div>
+    </div>
+    <div class="chartpanel">
+      <div class="charthead">
+        <div class="legend" id="legend"></div>
+        <div class="spacer"></div>
+        <div class="seg" id="chartWin">
+          <button data-v="30">30s</button><button data-v="120" class="on">2m</button>
+          <button data-v="600">10m</button><button data-v="1800">30m</button>
+          <button data-v="0">All</button>
+        </div>
+        <button id="chartExport" class="ghost" title="Save the plotted points (current time window and unit) as CSV">Export CSV</button>
+        <button id="chartClear" class="ghost" title="Clear plotted history">Clear</button>
+      </div>
+      <canvas id="chart"></canvas>
+    </div>
+  </section>
+
+  <aside>
+    <nav class="tabs" id="tabs">
+      <button data-tab="display" class="on">Display</button>
+      <button data-tab="camera">Camera</button>
+      <button data-tab="points">Points</button>
+      <button data-tab="sr">Integration</button>
+      <button data-tab="info">Info<span class="warn-badge" id="infoWarn" hidden title="Camera firmware update available">!</span></button>
+    </nav>
+
+    <!-- DISPLAY -->
+    <div class="tab on" id="tab-display">
+      <h3>Palette</h3>
+      <div class="palettes" id="palettes"></div>
+      <h3>Range</h3>
+      <div class="seg full" id="rangeMode">
+        <button data-v="auto" class="on">Auto</button>
+        <button data-v="pct">Auto 1–99%</button>
+        <button data-v="manual">Manual</button>
+      </div>
+      <div class="row2">
+        <label>Min <input type="number" id="rMin" step="0.5"></label>
+        <label>Max <input type="number" id="rMax" step="0.5"></label>
+      </div>
+      <button class="ghost small" id="rLock">Lock current range</button>
+      <h3>Units</h3>
+      <div class="seg full" id="units">
+        <button data-v="C" class="on">°C</button><button data-v="F">°F</button><button data-v="K">K</button>
+      </div>
+      <h3>Image</h3>
+      <label class="line">Smoothing
+        <select id="smooth"><option value="smooth">Smooth</option><option value="pixel">Pixelated</option></select></label>
+      <label class="line">Rotate
+        <select id="rotate"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
+      <label class="chk"><input type="checkbox" id="flipH"> Mirror horizontally</label>
+      <label class="chk"><input type="checkbox" id="flipV"> Flip vertically</label>
+      <label class="line">Temporal average
+        <select id="tavg"><option>1</option><option>2</option><option>4</option><option>8</option><option>16</option></select></label>
+      <h3>Overlays</h3>
+      <label class="chk"><input type="checkbox" id="ovMinMax" checked> Hot / cold markers</label>
+      <label class="chk"><input type="checkbox" id="ovCenter"> Center crosshair</label>
+      <label class="line">Isotherm
+        <select id="isoMode"><option value="off">Off</option><option value="above">Above</option><option value="below">Below</option></select></label>
+      <label class="line">Threshold <input type="number" id="isoVal" value="40" step="0.5"></label>
+    </div>
+
+    <!-- CAMERA -->
+    <div class="tab" id="tab-camera">
+      <h3>Gain mode</h3>
+      <div class="seg full" data-setting="gain_mode">
+        <button data-v="high">High</button><button data-v="low">Low</button><button data-v="auto">Auto</button>
+      </div>
+      <p class="note">High gain: −10…140 °C, lower noise. Low gain: up to ~400 °C. Auto switches as needed.</p>
+
+      <h3>Flat-field correction</h3>
+      <label class="line">Shutter mode
+        <select data-setting="shutter_mode">
+          <option value="auto">Auto</option><option value="manual">Manual</option><option value="external">External</option>
+        </select></label>
+      <label class="line">Auto FFC period (s) <input type="number" data-setting="ffc_period_s" step="10" min="0"></label>
+      <label class="line">Auto FFC on ΔT (K) <input type="number" data-setting="ffc_temp_delta_K" step="0.1" min="0"></label>
+      <label class="chk"><input type="checkbox" data-setting="video_freeze_during_ffc"> Freeze video during FFC</label>
+      <button id="btnFFC2">Run FFC now</button>
+
+      <h3>Object</h3>
+      <label class="line">Material preset
+        <select id="emisPreset">
+          <option value="">—</option>
+          <option value="1.00">Blackbody / electrical tape (1.00)</option>
+          <option value="0.98">Human skin (0.98)</option>
+          <option value="0.96">Water / ice (0.96)</option>
+          <option value="0.94">Matte paint (0.94)</option>
+          <option value="0.92">Plastic, rubber (0.92)</option>
+          <option value="0.91">PCB / FR-4 (0.91)</option>
+          <option value="0.90">Wood, paper (0.90)</option>
+          <option value="0.92">Concrete, brick (0.92)</option>
+          <option value="0.80">Oxidised steel (0.80)</option>
+          <option value="0.77">Anodised aluminium (0.77)</option>
+          <option value="0.30">Dull metal (0.30)</option>
+          <option value="0.05">Polished metal (0.05)</option>
+        </select></label>
+      <label class="line">Emissivity <input type="number" data-setting="emissivity" step="0.01" min="0.01" max="1"></label>
+      <label class="line">Reflected / background (°C) <input type="number" data-setting="t_bkg_C" step="0.5"></label>
+
+      <details>
+        <summary>Atmosphere &amp; window</summary>
+        <label class="line">Atmospheric transmission <input type="number" data-setting="tau_atm" step="0.01" min="0" max="1"></label>
+        <label class="line">Atmospheric temp (°C) <input type="number" data-setting="t_atm_C" step="0.5"></label>
+        <label class="line">Window transmission <input type="number" data-setting="tau_window" step="0.01" min="0" max="1"></label>
+        <label class="line">Window temp (°C) <input type="number" data-setting="t_window_C" step="0.5"></label>
+        <label class="line">Window reflection <input type="number" data-setting="refl_window" step="0.01" min="0" max="1"></label>
+        <label class="line">Window-reflected temp (°C) <input type="number" data-setting="t_refl_C" step="0.5"></label>
+        <p class="note">Leave transmission at 1 and reflection at 0 unless you shoot through a protective window.</p>
+      </details>
+
+      <h3>Radiometry</h3>
+      <label class="chk"><input type="checkbox" data-setting="radiometry_enabled"> Radiometry enabled</label>
+      <label class="chk"><input type="checkbox" data-setting="tlinear_enabled"> TLinear output (pixels = temperature)</label>
+      <label class="line">TLinear resolution
+        <select data-setting="tlinear_resolution"><option value="0.01">0.01 K (≤ 382 °C)</option><option value="0.1">0.1 K (full range)</option></select></label>
+      <p class="note" id="camErr"></p>
+    </div>
+
+    <!-- POINTS -->
+    <div class="tab" id="tab-points">
+      <h3>Measurement points</h3>
+      <label class="line">New point area
+        <select id="ptRadius"><option value="0">1 × 1 px</option><option value="1" selected>3 × 3 px</option><option value="2">5 × 5 px</option><option value="3">7 × 7 px</option></select></label>
+      <div id="ptList" class="ptlist"></div>
+      <button class="ghost small" id="ptClear">Remove all points</button>
+      <h3>Also plot</h3>
+      <label class="chk"><input type="checkbox" data-builtin="max"> Frame maximum</label>
+      <label class="chk"><input type="checkbox" data-builtin="min"> Frame minimum</label>
+      <label class="chk"><input type="checkbox" data-builtin="mean"> Frame mean</label>
+      <h3>CSV logging</h3>
+      <label class="line">Interval
+        <select id="logInt"><option value="0">Every frame</option><option value="0.5">0.5 s</option><option value="1" selected>1 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="60">1 min</option></select></label>
+      <button id="logBtn" class="primary">Start logging</button>
+      <p class="note" id="logInfo">Values are averaged over each interval. Adding or removing a point starts a new part file.</p>
+      <h3>Raw recording</h3>
+      <button id="recBtn">Record raw frames</button>
+      <p class="note" id="recInfo">Full radiometric video (.y16 + metadata) for later analysis.</p>
+    </div>
+
+    <!-- SUPER-RES -->
+    <div class="tab" id="tab-sr">
+      <h3>Mode</h3>
+      <div class="seg full" id="srMode">
+        <button data-v="superres" class="on">Super-resolution</button>
+        <button data-v="integrate">Integrate (noise)</button>
+      </div>
+      <p class="note" id="srHelp"></p>
+      <label class="line">Frames <span class="val" id="srFramesV">48</span></label>
+      <input type="range" id="srFrames" min="8" max="200" step="8" value="48">
+      <div id="srOpts">
+        <label class="line">Upscale
+          <select id="srScale"><option value="2">2× (320×240)</option><option value="3" selected>3× (480×360)</option><option value="4">4× (640×480)</option></select></label>
+        <label class="line">Iterations <input type="number" id="srIter" value="30" min="0" max="200"></label>
+      </div>
+      <label class="chk" id="srAlignRow" hidden><input type="checkbox" id="srAlign"> Compensate drift (register frames)</label>
+      <label class="chk"><input type="checkbox" id="srFFC" checked> Run FFC before capturing</label>
+      <button id="srStart" class="primary">Capture</button>
+      <button id="srCancel" class="ghost" hidden>Cancel</button>
+      <div class="progress"><div id="srProg"></div></div>
+      <p class="note" id="srMsg"></p>
+      <div id="srStats" class="kv"></div>
+      <button id="srShow" class="ghost small" hidden>Show last result</button>
+    </div>
+
+    <!-- INFO -->
+    <div class="tab" id="tab-info">
+      <div class="fw-notice" id="fwNotice" hidden>
+        <div class="fw-title"><span class="warn-badge">!</span> Camera firmware update available</div>
+        <p id="fwText"></p>
+        <details>
+          <summary>How to update (about 2 minutes)</summary>
+          <ol>
+            <li>Close Thermal Studio and any other camera app.</li>
+            <li>On the PureThermal, hold <b>BOOT</b>, press and release <b>RST</b>, then release <b>BOOT</b>. The LED goes dim and stops blinking.</li>
+            <li>Download <code id="fwTgz"></code> from the <a id="fwRelLink" target="_blank" rel="noopener">firmware releases</a> page and double-click it in Downloads to unpack it.</li>
+            <li>Install dfu-util (<code>brew install dfu-util</code>) and run:<br>
+              <code class="cmd" id="fwCmd"></code></li>
+            <li><b>Unplug the PureThermal, wait 5 seconds, and plug it back in.</b> Flashing restarts the board but not the Lepton sensor; without a full power cycle the camera connects but sends no video.</li>
+            <li>Reopen Thermal Studio. Info should show the new board firmware.</li>
+          </ol>
+          <p class="note">The bootloader is in ROM, so a failed flash can always be retried. <a id="fwGuideLink" target="_blank" rel="noopener">Full instructions</a></p>
+        </details>
+      </div>
+      <h3>Camera</h3>
+      <div class="kv" id="infoKv"></div>
+      <h3>Files</h3>
+      <p class="note mono" id="outDir"></p>
+      <button id="openFolder" class="ghost small">Open folder</button>
+      <h3>Connection</h3>
+      <button id="reconnect">Reconnect camera</button>
+      <button id="useDemo" class="ghost">Use simulated camera</button>
+    </div>
+  </aside>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
