@@ -1,0 +1,84 @@
+# CI + release pipeline.
+#   pull request / push to main -> offline tests on every OS, then build + smoke-test all binaries
+#   push a tag like v1.0.0      -> same, then publish a GitHub Release with the binaries
+#   manual run (Actions tab)    -> same as a push; binaries are downloadable from the run page
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.9", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r requirements.txt
+      - name: Offline tests
+        run: python -m unittest discover -s tests -v
+      - name: Byte-compile everything
+        run: python -m compileall -q .
+
+  build:
+    name: build (${{ matrix.tag }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest,   tag: windows-x64 }
+          - { os: macos-latest,     tag: macos-arm64 }   # Apple Silicon
+          - { os: macos-15-intel,   tag: macos-x64 }     # Intel Macs
+          - { os: ubuntu-22.04,     tag: linux-x64 }     # older glibc = runs on 22.04 and newer
+          - { os: ubuntu-22.04-arm, tag: linux-arm64 }   # Raspberry Pi 4/5 (64-bit OS), Jetson
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: python -m pip install -r requirements-build.txt
+      - name: Build and smoke-test the binary
+        run: python build.py --smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thermal-studio-${{ matrix.tag }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

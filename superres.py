@@ -124,11 +124,11 @@ def register(ref_f, mov, window, upsample_factor=20):
     peak = np.array(np.unravel_index(np.argmax(np.abs(cc)), cc.shape), dtype=float)
     absc = np.abs(cc)
     quality = float(absc.max() / (np.median(absc) + 1e-12))
-    mid = np.fix(shape / 2)
+    mid = np.trunc(shape / 2)
     peak[peak > mid] -= shape[peak > mid]
     shifts = np.round(peak * upsample_factor) / upsample_factor
     region = int(np.ceil(upsample_factor * 1.5))
-    dftshift = np.fix(region / 2.0)
+    dftshift = np.trunc(region / 2.0)
     offsets = dftshift - shifts * upsample_factor
     ucc = _upsampled_dft(prod.conj(), region, upsample_factor, offsets).conj()
     m = np.array(np.unravel_index(np.argmax(np.abs(ucc)), ucc.shape), dtype=float) - dftshift
