@@ -3,7 +3,8 @@
 Thermal Studio - viewer / logger / super-resolution for FLIR Lepton 3.5 on a
 PureThermal board.
 
-    python3 thermal_app.py               # real camera (macOS: IOKit backend, no sudo)
+    python3 thermal_app.py               # real camera, no sudo / admin needed
+                                         #   macOS: IOKit, Linux: V4L2, Windows: DirectShow
     python3 thermal_app.py --demo        # simulated camera
 
 Then open http://127.0.0.1:8765 (opened automatically).
@@ -30,8 +31,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__))   # inside a PyInstaller bundle: the unpack dir
 sys.path.insert(0, HERE)
+FROZEN = getattr(sys, "frozen", False)
+
+
+def default_out_dir():
+    """captures/ next to the source; for the packaged app, a folder in Documents (or home)."""
+    if not FROZEN:
+        return os.path.join(HERE, "captures")
+    home = os.path.expanduser("~")
+    docs = os.path.join(home, "Documents")
+    return os.path.join(docs if os.path.isdir(docs) else home, "Thermal Studio")
 
 import superres  # noqa: E402
 
@@ -126,6 +137,14 @@ class Studio:
                     # macOS: IOKit backend, no sudo (libuvc's driver detach caused kernel panics)
                     from lepton_iokit import LeptonIOKit
                     cam = LeptonIOKit()
+                elif sys.platform == "win32":
+                    # Windows: stock UVC driver, DirectShow Y16 + IKsControl (no Zadig)
+                    from lepton_windows import LeptonWindows
+                    cam = LeptonWindows()
+                elif sys.platform.startswith("linux") and os.environ.get("THERMAL_BACKEND", "v4l2") == "v4l2":
+                    # Linux: kernel uvcvideo driver via V4L2 (no libuvc, no udev rule)
+                    from lepton_v4l2 import LeptonV4L2
+                    cam = LeptonV4L2()
                 else:
                     from lepton_uvc import LeptonUVC
                     cam = LeptonUVC()
@@ -783,6 +802,9 @@ def make_handler(studio):
 
         def _p_open_folder(self, b):
             path = studio.out_dir
+            if sys.platform == "win32":
+                os.startfile(path)
+                return
             user = os.environ.get("SUDO_USER")
             opener = "open" if sys.platform == "darwin" else "xdg-open"
             cmd = ["sudo", "-u", user, opener, path] if user else [opener, path]
@@ -808,7 +830,7 @@ def main():
     ap.add_argument("--no-jitter", action="store_true", help="demo: hold the simulated camera still")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--out", default=os.path.join(HERE, "captures"), help="folder for logs and captures")
+    ap.add_argument("--out", default=default_out_dir(), help="folder for logs and captures")
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
 

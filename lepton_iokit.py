@@ -30,6 +30,11 @@ FRAME_CB = ctypes.CFUNCTYPE(None, ctypes.POINTER(ctypes.c_uint8), ctypes.c_int,
 
 def build_helper(force=False):
     """Compile macos/liblepton_iokit.dylib if it's missing or older than the source."""
+    if getattr(sys, "frozen", False):
+        # Packaged app: the dylib was built at package time (build.py) and bundled.
+        if not os.path.exists(LIB):
+            raise CameraError("this build is missing macos/liblepton_iokit.dylib")
+        return LIB
     if not force and os.path.exists(LIB) and os.path.getmtime(LIB) >= os.path.getmtime(SRC):
         return LIB
     cmd = ["clang", "-O2", "-Wall", "-Wno-deprecated-declarations", "-dynamiclib",
